@@ -1,0 +1,261 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Classificador de Imagens</title>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+
+  <!-- Biblioteca para modelos do Teachable Machine -->
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      color: #222;
+      text-align: center;
+      padding: 30px;
+    }
+
+    .container {
+      max-width: 550px;
+      margin: auto;
+      padding: 25px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    input {
+      margin: 20px 0;
+    }
+
+    img {
+      display: none;
+      max-width: 100%;
+      max-height: 350px;
+      margin: 20px auto;
+      border-radius: 8px;
+    }
+
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 6px;
+      background: #2563eb;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+
+    #resultado {
+      margin-top: 25px;
+      text-align: left;
+    }
+
+    .classe {
+      margin: 12px 0;
+    }
+
+    .barra {
+      height: 12px;
+      background: #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 5px;
+    }
+
+    .progresso {
+      height: 100%;
+      background: #2563eb;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Classificador de Imagens</h1>
+
+    <p>Selecione uma imagem para realizar a classificação.</p>
+
+    <input
+      type="file"
+      id="imagemInput"
+      accept="image/*"
+    >
+
+    <img
+      id="imagemPreview"
+      alt="Imagem selecionada"
+    >
+
+    <br>
+
+    <button id="classificarBtn" disabled>
+      Classificar imagem
+    </button>
+
+    <div id="status">Carregando modelo...</div>
+
+    <div id="resultado"></div>
+  </div>
+
+  <script>
+    // Caminhos dos arquivos do modelo
+    const modelURL = "./model.json";
+    const metadataURL = "./metadata.json";
+
+    let modelo;
+    let imagemSelecionada = false;
+
+    // Elementos da página
+    const imagemInput = document.getElementById("imagemInput");
+    const imagemPreview = document.getElementById("imagemPreview");
+    const classificarBtn = document.getElementById("classificarBtn");
+    const status = document.getElementById("status");
+    const resultado = document.getElementById("resultado");
+
+    // Carrega o modelo do Teachable Machine
+    async function carregarModelo() {
+      try {
+        modelo = await tmImage.load(
+          modelURL,
+          metadataURL
+        );
+
+        status.textContent = "Modelo carregado!";
+
+        // Libera o botão quando o modelo estiver pronto
+        classificarBtn.disabled = !imagemSelecionada;
+
+      } catch (erro) {
+        console.error("Erro ao carregar o modelo:", erro);
+
+        status.textContent =
+          "Erro ao carregar o modelo. Confira os arquivos.";
+      }
+    }
+
+    // Exibe a imagem selecionada
+    imagemInput.addEventListener("change", function (event) {
+      const arquivo = event.target.files[0];
+
+      if (!arquivo) {
+        return;
+      }
+
+      if (!arquivo.type.startsWith("image/")) {
+        status.textContent = "Selecione um arquivo de imagem válido.";
+        return;
+      }
+
+      const urlImagem = URL.createObjectURL(arquivo);
+
+      imagemPreview.onload = function () {
+        imagemSelecionada = true;
+
+        imagemPreview.style.display = "block";
+
+        // O botão só é liberado se o modelo já estiver carregado
+        classificarBtn.disabled = !modelo;
+
+        status.textContent = modelo
+          ? "Imagem carregada. Clique em classificar."
+          : "A imagem foi carregada. Aguarde o modelo.";
+      };
+
+      imagemPreview.src = urlImagem;
+
+      // Limpa os resultados anteriores
+      resultado.innerHTML = "";
+    });
+
+    // Realiza a classificação da imagem
+    async function classificarImagem() {
+      if (!modelo || !imagemSelecionada) {
+        status.textContent =
+          "Carregue uma imagem e aguarde o modelo.";
+
+        return;
+      }
+
+      try {
+        classificarBtn.disabled = true;
+
+        status.textContent = "Classificando imagem...";
+
+        resultado.innerHTML = "";
+
+        // Executa a previsão do modelo
+        const previsoes = await modelo.predict(imagemPreview);
+
+        // Ordena da maior para a menor probabilidade
+        previsoes.sort(
+          (a, b) => b.probability - a.probability
+        );
+
+        resultado.innerHTML = "<h2>Resultado</h2>";
+
+        // Apresenta as probabilidades
+        previsoes.forEach((previsao) => {
+          const porcentagem =
+            (previsao.probability * 100).toFixed(2);
+
+          const classe = document.createElement("div");
+
+          classe.className = "classe";
+
+          classe.innerHTML = `
+            <strong>${previsao.className}</strong>
+            — ${porcentagem}%
+
+            <div class="barra">
+              <div
+                class="progresso"
+                style="width: ${porcentagem}%"
+              ></div>
+            </div>
+          `;
+
+          resultado.appendChild(classe);
+        });
+
+        status.textContent = "Classificação concluída.";
+
+      } catch (erro) {
+        console.error("Erro na classificação:", erro);
+
+        status.textContent =
+          "Ocorreu um erro ao classificar a imagem.";
+
+      } finally {
+        // Libera o botão novamente após a classificação
+        classificarBtn.disabled = !modelo || !imagemSelecionada;
+      }
+    }
+
+    // Evento do botão de classificação
+    classificarBtn.addEventListener(
+      "click",
+      classificarImagem
+    );
+
+    // Inicializa o site
+    carregarModelo();
+  </script>
+</body>
+</html>
